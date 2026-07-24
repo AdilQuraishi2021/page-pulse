@@ -1,0 +1,21 @@
+{
+  "name": "page-pulse",
+  "version": "1.0.0",
+  "description": "Production-grade URL audit service for the Digital Heroes SDE assessment.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node test/run-tests.js",
+    "lint": "node --check src/config.js && node --check src/errors.js && node --check src/cache.js && node --check src/rateLimiter.js && node --check src/logger.js && node --check src/auditor.js && node --check src/server.js && node --check test/auditor.test.js && node --check test/server.test.js && node --check test/run-tests.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "url-audit",
+    "assessment",
+    "digital-heroes"
+  ],
+  "license": "MIT"
+}
