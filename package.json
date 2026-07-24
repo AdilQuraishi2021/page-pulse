@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Production-grade URL audit service for the Digital Heroes SDE assessment.",
   "type": "module",
-  "main": "src/server.js",
   "scripts": {
     "build": "npm run lint",
     "start": "node src/server.js",
