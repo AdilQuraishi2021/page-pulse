@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page Pulse Architecture</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; background: #f7f8fb; color: #172033; }
+    header, main { width: min(1040px, calc(100% - 32px)); margin: 0 auto; }
+    header { padding: 36px 0 22px; }
+    nav { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
+    nav a, footer a { color: #1f6feb; font-weight: 700; text-decoration: none; }
+    h1 { font-size: clamp(2rem, 5vw, 3.8rem); line-height: 1; margin: 0 0 14px; letter-spacing: 0; }
+    h2 { margin: 32px 0 12px; font-size: 1.35rem; }
+    h3 { margin: 20px 0 8px; font-size: 1rem; }
+    p, li { color: #4b5565; line-height: 1.6; }
+    section { border-top: 1px solid #d9dee8; padding: 8px 0 14px; }
+    code { background: #e9edf5; border-radius: 6px; padding: 2px 5px; }
+    pre { background: #111827; color: #e5e7eb; border-radius: 8px; padding: 18px; overflow: auto; line-height: 1.45; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+    .panel { border: 1px solid #d9dee8; border-radius: 8px; padding: 16px; background: #fff; }
+    footer { border-top: 1px solid #d9dee8; padding: 18px; text-align: center; color: #566071; margin-top: 32px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <nav aria-label="Project navigation">
+      <a href="/">Audit API</a>
+      <a href="https://github.com/AdilQuraishi2021/page-pulse" rel="noopener">GitHub Repository</a>
+    </nav>
+    <h1>Scale Architecture</h1>
+    <p>Design for 10,000 audits per day, bursts of 500 concurrent requests, and a customer-facing response-time SLA.</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>Architecture Diagram</h2>
+      <pre><code>Client / Browser / API Consumer
+        |
+        v
+CDN + WAF
+        |
+        v
+Load Balancer
+        |
+        v
+Stateless API Instances
+   |         |          |
+   v         v          v
+Redis    Redis       Audit Queue
+Rate     Audit          |
+Limit    Cache          v
+                    Worker Pool
+                        |
+                        v
+                 Target Websites
+                        |
+                        v
+          Postgres Audit Metadata
+
+Logs, metrics, and traces are emitted by API and workers.</code></pre>
+    </section>
+
+    <section>
+      <h2>Components and Data Flow</h2>
+      <ol>
+        <li>Client calls <code>POST /api/audit</code> with a URL.</li>
+        <li>CDN and WAF apply edge protections before traffic reaches the load balancer.</li>
+        <li>Stateless API instances validate the URL, attach a request ID, check per-client rate limits, and read the audit cache.</li>
+        <li>Cache hits return immediately with <code>200</code>.</li>
+        <li>Cache misses run synchronously while capacity is available, or return <code>202</code> with a job ID during bursts.</li>
+        <li>Workers fetch target pages with timeouts, byte limits, HTML validation, and backpressure.</li>
+        <li>Audit results are stored in Redis for the cache window and Postgres for durable history.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Queueing Strategy and State</h2>
+      <p>A bounded Redis-backed queue such as BullMQ, or a managed queue such as SQS, absorbs traffic spikes without letting outbound fetches overwhelm API instances. Queue depth, oldest job age, and worker timeout rate decide autoscaling and load shedding.</p>
+      <ul>
+        <li><strong>Redis:</strong> shared cache, rate-limit counters, queue coordination.</li>
+        <li><strong>Postgres:</strong> durable audit records, API keys, customer accounts, reporting.</li>
+        <li><strong>Object storage:</strong> optional short-retention debug samples.</li>
+        <li><strong>Observability backend:</strong> logs, metrics, traces, alerts.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Technology Decisions</h2>
+      <div class="grid">
+        <article class="panel">
+          <h3>Node.js API</h3>
+          <p>Chosen for fast I/O-heavy URL fetching. Rejected a heavy framework stack because the assessment API surface is small and dependency-light code is easier to review.</p>
+        </article>
+        <article class="panel">
+          <h3>Redis Cache and Limits</h3>
+          <p>Chosen for shared low-latency state across API replicas. Rejected process memory only because it fails across multiple instances and resets on deploy.</p>
+        </article>
+        <article class="panel">
+          <h3>Bounded Queue</h3>
+          <p>Chosen to absorb 500-request bursts while preserving API latency. Rejected unlimited in-process promises because they can exhaust sockets and memory.</p>
+        </article>
+        <article class="panel">
+          <h3>Postgres Metadata</h3>
+          <p>Chosen for durable audit history and customer reporting. Rejected document-only storage because account, API key, and reporting data are relational.</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>Failure Modes and Mitigations</h2>
+      <ul>
+        <li><strong>Slow target websites:</strong> enforce timeouts, response-size limits, redirect limits, per-host concurrency, and queue backpressure.</li>
+        <li><strong>Redis outage:</strong> run managed HA Redis, alert on failures, degrade cache behavior, and fail closed for async queue work if required.</li>
+        <li><strong>Burst exceeds worker capacity:</strong> autoscale on queue depth and oldest job age, cap queue length, and return structured <code>503</code> when capacity is exhausted.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Monitoring, Alerts, and Rollback</h2>
+      <p>Monitor request rate, p95 and p99 latency, error-code distribution, cache hit ratio, Redis latency, active audits, queue depth, oldest queued job age, worker timeout rate, outbound fetch latency, CPU, memory, sockets, and event-loop delay.</p>
+      <p>Alert when p95 latency exceeds SLA, non-validation errors exceed 2%, queue age crosses SLA, Redis is unavailable, timeout rate spikes, or cache hit ratio drops sharply after deploy.</p>
+      <p>Rollback with immutable versions and blue/green or rolling deploys. Release to a small traffic slice, compare telemetry, route traffic back to the previous healthy version on alert, and keep migrations backward-compatible for at least one release.</p>
+    </section>
+  </main>
+
+  <footer><a href="https://digitalheroesco.com" rel="noopener">Built for Digital Heroes Training Task</a></footer>
+</body>
+</html>

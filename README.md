@@ -28,6 +28,8 @@ For hosted platforms such as Render, Railway, Fly.io, or Azure App Service, use:
 
 The repo also includes Vercel-compatible serverless routes in `api/` and a static homepage in `public/`.
 
+Live Task B architecture page: `/architecture.html`
+
 ## Configuration
 
 | Variable | Default | Description |
