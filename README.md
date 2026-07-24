@@ -26,6 +26,8 @@ For hosted platforms such as Render, Railway, Fly.io, or Azure App Service, use:
 - Start command: `npm start`
 - Health check: `/health`
 
+The repo also includes Vercel-compatible serverless routes in `api/` and a static homepage in `public/`.
+
 ## Configuration
 
 | Variable | Default | Description |
